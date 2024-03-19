@@ -7,6 +7,7 @@ error NotAuthorized();
 error InvalidInput();
 error ExceedsMaxLockTime();
 error AccountLocked();
+error AccountUnlocked();
 error InvalidAccountProof();
 error InvalidGuardian();
 error InvalidImplementation();
