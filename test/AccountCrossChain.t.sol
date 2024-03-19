@@ -38,8 +38,9 @@ contract AccountTest is Test {
     uint256 fork2;
 
     function setUp() public {
-        fork1 = vm.createFork("https://eth-mainnet.g.alchemy.com/v2/4oWNHugx9IPAPu0m87V5SLZtNGPmypYw");
-        fork2 = vm.createFork("https://opt-mainnet.g.alchemy.com/v2/8N1ShGmo0ZJyCe25EPpxRb55N-Pq-2mM");
+        string memory apiKey = vm.envString("ALCHEMY_API_KEY");
+        fork1 = vm.createFork(string(abi.encodePacked("https://eth-mainnet.g.alchemy.com/v2/", apiKey)));
+        fork2 = vm.createFork(string(abi.encodePacked("https://opt-mainnet.g.alchemy.com/v2/", apiKey)));
 
         registry = new ERC6551Registry();
 
