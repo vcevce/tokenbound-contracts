@@ -199,13 +199,13 @@ contract AccountTest is Test {
 
         uint256 state = account.state();
 
+        // locks account
+        vm.prank(user1);
+        account.lock();
+
         // cannot lock if already locked
         vm.prank(user1);
         vm.expectRevert(AccountLocked.selector);
-        account.lock();
-
-        // locks account
-        vm.prank(user1);
         account.lock();
 
         // locking account should change state

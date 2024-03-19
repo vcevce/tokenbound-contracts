@@ -38,8 +38,8 @@ contract AccountTest is Test {
     uint256 fork2;
 
     function setUp() public {
-        fork1 = vm.createFork("https://ethereum.publicnode.com");
-        fork2 = vm.createFork("https://optimism.publicnode.com");
+        fork1 = vm.createFork("https://eth-mainnet.g.alchemy.com/v2/4oWNHugx9IPAPu0m87V5SLZtNGPmypYw");
+        fork2 = vm.createFork("https://opt-mainnet.g.alchemy.com/v2/8N1ShGmo0ZJyCe25EPpxRb55N-Pq-2mM");
 
         registry = new ERC6551Registry();
 
@@ -54,13 +54,13 @@ contract AccountTest is Test {
         vm.selectFork(fork1);
         tokenCollection = new MockERC721();
         uint256 tokenId = 1;
-        address user1 = vm.addr(1);
+        address user1 = vm.addr(5);
         tokenCollection.mint(user1, tokenId);
     }
 
     function testCrossChainCalls() public {
         uint256 tokenId = 1;
-        address user1 = vm.addr(1);
+        address user1 = vm.addr(5);
         address crossChainExecutor = vm.addr(2);
 
         // create account on fork1
@@ -114,7 +114,7 @@ contract AccountTest is Test {
 
     function testCrossChainCallsOPStack() public {
         uint256 tokenId = 1;
-        address user1 = vm.addr(1);
+        address user1 = vm.addr(5);
 
         // create account on fork1
         vm.selectFork(fork1);
@@ -137,9 +137,10 @@ contract AccountTest is Test {
         AccountV3 account = AccountV3(payable(accountAddress));
 
         // fork1 owner cannot access account
-        vm.prank(vm.addr(1));
+        vm.prank(vm.addr(5));
         vm.expectRevert(NotAuthorized.selector);
         account.execute(user1, 0.1 ether, "", 0);
+        
         assertEq(user1.balance, 0 ether);
 
         // account can access account via optimism portal
