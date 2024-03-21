@@ -179,6 +179,46 @@ contract AccountTest is Test {
         assertFalse(returnValue2 == IERC1271.isValidSignature.selector);
     }
 
+    function testAccountLocksOnAccountBearingTokenTransfer() public {
+        uint256 tokenId = 1;
+
+        address accountAddress = registry.createAccount(
+            address(implementation), 0, block.chainid, address(tokenCollection), tokenId
+        );
+
+        vm.deal(accountAddress, 1 ether);
+
+        AccountV3Modified account = AccountV3Modified(payable(accountAddress));
+
+        // only tokenCollection can call onAccountBearingTokenTransfer
+        vm.prank(vm.addr(1));
+        vm.expectRevert(NotAuthorized.selector);
+        account.onAccountBearingTokenTransfer(tokenId);
+
+        // should fail for wrong tokenId
+        vm.prank(vm.addr(1));
+        vm.expectRevert(NotAuthorized.selector);
+        tokenCollection.callOnAccountBearingTokenTransfer(account, tokenId + 1);
+
+        // lock account
+        vm.prank(vm.addr(1));
+        account.softLock();
+
+        // should succeed when called by tokenCollection
+        tokenCollection.callOnAccountBearingTokenTransfer(account, tokenId);
+
+        assertEq(account.isLocked(), false);
+
+        // lock account
+        vm.prank(vm.addr(1));
+        account.lock(365 days);
+
+        // should succeed when called by tokenCollection
+        tokenCollection.callOnAccountBearingTokenTransfer(account, tokenId);
+
+        assertEq(account.isLocked(), false);
+    }
+
     function testAccountLocksAndUnlocks() public {
         uint256 tokenId = 1;
         address user1 = vm.addr(1);
@@ -191,22 +231,26 @@ contract AccountTest is Test {
         vm.deal(accountAddress, 1 ether);
 
         AccountV3Modified account = AccountV3Modified(payable(accountAddress));
-
         // cannot lock account if invalid signer
         vm.prank(user2);
         vm.expectRevert(NotAuthorized.selector);
-        account.lock();
+        account.softLock();
 
         uint256 state = account.state();
 
         // locks account
         vm.prank(user1);
-        account.lock();
+        account.softLock();
 
         // cannot lock if already locked
         vm.prank(user1);
         vm.expectRevert(AccountLocked.selector);
-        account.lock();
+        account.softLock();
+
+        // cannot hard lock if soft locked
+        vm.prank(user1);
+        vm.expectRevert(AccountLocked.selector);
+        account.lock(365 days);
 
         // locking account should change state
         assertTrue(state != account.state());
@@ -222,9 +266,6 @@ contract AccountTest is Test {
         (bool success, bytes memory result) =
             accountAddress.call(abi.encodeWithSignature("customFunction()"));
 
-        console.log(success);
-        console.logBytes(result);
-
         // setOverrides calls should revert if account is locked
         {
             bytes4[] memory selectors = new bytes4[](1);
@@ -239,7 +280,7 @@ contract AccountTest is Test {
         // lock calls should revert if account is locked
         vm.prank(user1);
         vm.expectRevert(AccountLocked.selector);
-        account.lock();
+        account.softLock();
 
         // signing should fail if account is locked
         {
@@ -263,6 +304,77 @@ contract AccountTest is Test {
         vm.prank(user1);
         vm.expectRevert(AccountUnlocked.selector);
         account.unlock();
+
+        // TEST HARD LOCK
+
+        // cannot be locked for more than 365 days
+        vm.prank(user1);
+        vm.expectRevert(ExceedsMaxLockTime.selector);
+        account.lock(366 days);
+
+        state = account.state();
+
+        // lock account for 10 days
+        uint256 unlockTimestamp = block.timestamp + 10 days;
+        vm.prank(user1);
+        account.lock(unlockTimestamp);
+
+        // locking account should change state
+        assertTrue(state != account.state());
+
+        assertEq(account.isLocked(), true);
+
+        // cannot soft lock if hard locked
+        vm.prank(user1);
+        vm.expectRevert(AccountLocked.selector);
+        account.softLock();
+
+        // transaction should revert if account is locked
+        vm.prank(user1);
+        vm.expectRevert(AccountLocked.selector);
+        account.execute(payable(user1), 1 ether, "", LibExecutor.OP_CALL);
+
+        // fallback calls should revert if account is locked
+        vm.prank(user1);
+        (success, result) =
+            accountAddress.call(abi.encodeWithSignature("customFunction()"));
+
+        // setOverrides calls should revert if account is locked
+        {
+            bytes4[] memory selectors = new bytes4[](1);
+            selectors[0] = IERC721Receiver.onERC721Received.selector;
+            address[] memory implementations = new address[](1);
+            implementations[0] = vm.addr(1337);
+            vm.prank(user1);
+            vm.expectRevert(AccountLocked.selector);
+            account.setOverrides(selectors, implementations);
+        }
+
+        // lock calls should revert if account is locked
+        vm.prank(user1);
+        vm.expectRevert(LockTimeInPast.selector);
+        account.lock(0);
+
+        vm.prank(user1);
+        vm.expectRevert(AccountLocked.selector);
+        account.lock(unlockTimestamp + 1);
+
+        // cannot unlock if hard locked
+        vm.prank(user1);
+        vm.expectRevert(AccountTimeLocked.selector);
+        account.unlock();
+
+        // signing should fail if account is locked
+        {
+            bytes32 hash = keccak256("This is a signed message");
+            (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(2, hash);
+            bytes memory signature1 = abi.encodePacked(r1, s1, v1);
+            bytes4 returnValue = account.isValidSignature(hash, signature1);
+            assertEq(returnValue, 0);
+        }
+
+        // warp to timestamp after account is unlocked
+        vm.warp(unlockTimestamp + 1 days);
 
         // transaction succeed now that account is unlocked
         vm.prank(user1);
